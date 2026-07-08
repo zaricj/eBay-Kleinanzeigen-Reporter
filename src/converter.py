@@ -1,15 +1,35 @@
-import pandas as pd
-from pathlib import Path
-from pprint import pprint
-from rich import print
-from typing import Any
 import json
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+from rich import print
+
+
+def load_json_data(filepath: str) -> dict:
+    if Path(filepath).exists():
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                # If the JSON file is valid but completely empty ({}),
+                # fall back to default configuration
+                if data:
+                    return data
+                return {}
+        except json.JSONDecodeError:
+            print(f"[bold yellow]Warning: {filepath} is corrupted or invalid. Using default configuration.[/bold yellow]")
+            return {}
+
+    # This catches the case where self.config_file.exists() is False
+    return {}
+
 
 def ensure_dir(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
+
 def save_to_file(destination_dir: str, filename: str, data: Any) -> None:
-    """Write data to a file format.
+    """Write the response data to a **.txt** of **.json** file format.
 
     Args:
         filename (str): Name of the file with the suffix (file extension) at the end. Use **.txt** or **.json** for now
@@ -17,6 +37,7 @@ def save_to_file(destination_dir: str, filename: str, data: Any) -> None:
 
     Raises:
         OSError: If filename does not contain a suffix.
+        ValueError: If the provided file suffix is unsupported.
     """
     # Params
     buffer: int = 65512
@@ -29,15 +50,15 @@ def save_to_file(destination_dir: str, filename: str, data: Any) -> None:
     
     match extension:
         case ".txt":
-            with open(file={filepath}, mode="w", buffering=buffer, encoding="utf-8") as f:
-                pprint("[bold green]Writing data to file as text file...[bold green]")
+            with open(file=filepath, mode="w", buffering=buffer, encoding="utf-8") as f:
+                print("[bold green]Writing data to file as text file...[bold green]")
                 f.write(data)
-            pprint(f"Text file saved to: [bold magenta]'{filepath}'[/bold magenta]")
+            print(f"Text file saved to: [bold magenta]'{filepath.__str__()}'[/bold magenta]")
         case ".json":
             with open(file=filepath, mode="w", encoding="utf-8") as f:
                 print("[bold green]Writing data to file as json file...[/bold green]")
                 json.dump(data, f, indent=4, ensure_ascii=False)
-            pprint(f"JSON file saved to: [bold magenta]'{filepath}'[/bold magenta]")
+            print(f"JSON file saved to: [bold magenta]'{filepath.__str__()}'[/bold magenta]")
         case _:
             raise ValueError(f"[bold red]Unsupported extension: {extension}[/bold red]")
     
