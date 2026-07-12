@@ -83,7 +83,7 @@ def main() -> None:
     
     # Fetch all detailed responses
     raw_detailed_data: list[dict[str, Any]] = fetch_all_listings_detailed(results, BASE_URL, "inserat", 2)
-    save_to_file(output_dir, "Detailed_listings.json", raw_detailed_data)
+    save_to_file(output_dir, f"Detailed_Kleinanzeigen_{search}_{location}.json", raw_detailed_data)
     
     # Extract and clean the apartment specs
     clean_apartments = get_apartments(raw_detailed_data)
