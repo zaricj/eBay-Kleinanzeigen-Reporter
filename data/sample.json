@@ -1,0 +1,15 @@
+{
+    "firstName": "Jane",
+    "lastName": "Doe",
+    "age": 28,
+    "isActive": true,
+    "hobbies": [
+        "reading",
+        "hiking",
+        "coding"
+    ],
+    "address": {
+        "city": "Frankfurt",
+        "country": "Germany"
+    }
+}
