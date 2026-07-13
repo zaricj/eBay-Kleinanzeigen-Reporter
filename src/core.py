@@ -53,6 +53,38 @@ def fetch_all_listings_detailed(results: list[dict[str, Any]], base_url: str, en
 
     return detailed_listings
 
+def flatten_listings_data(detailed_listings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    flattened_records: list = []
+
+    for detail_data in detailed_listings:
+        if detail_data.get("success") and "data" in detail_data:
+            ad_details = detail_data["data"]
+
+            if ad_details.get("status") in ["sold", "deleted"]:
+                continue
+
+            flat_entry = {
+                "ID": ad_details.get("id"),
+                "Title": ad_details.get("title"),
+                "Price (€)": ad_details.get("price", {}).get("amount"),
+                "Negotiable": ad_details.get("price", {}).get("negotiable"),
+                "Zip": ad_details.get("location", {}).get("zip"),
+                "City": ad_details.get("location", {}).get("city"),
+                "Seller Type": ad_details.get("seller", {}).get("type"),
+                "URL": ad_details.get("url_redirected"),
+            }
+
+            category_details = ad_details.get("details", {})
+            for key, val in category_details.items():
+                flat_entry[key] = val
+
+            desc = ad_details.get("description", "")
+            flat_entry["Description"] = desc[:150] + "..." if len(desc) > 150 else desc
+
+            flattened_records.append(flat_entry)
+
+    return flattened_records
+
 
 def get_kleinanzeigen_results(data: dict) -> list[dict[str, Any]]:
     """Returns a list of dictionaries of the 'results' key from the API response. Safely returns empty list on failure."""

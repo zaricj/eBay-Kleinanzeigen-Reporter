@@ -12,38 +12,10 @@ from src.core import (
     fetch_all_listings_detailed,
     get_kleinanzeigen_results,
     get_request,
+    flatten_listings_data,
 )
 
-def get_apartments(detailed_listings: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    detailed_apartments: list = []
-    
-    # Extract the actual data payload safely from memory
-    for detail_data in detailed_listings:
-        if detail_data.get("success") and "data" in detail_data:
-            ad_details = detail_data["data"]
-            
-            # Check status to filter out sold and deleted listings
-            if ad_details.get("status") in ["sold", "deleted"]:
-                continue
-            
-            # Flatten the metadata specifically for apartment searches
-            flat_entry = {
-                "ID": ad_details.get("id"),
-                "Title": ad_details.get("title"),
-                "Price (€)": ad_details.get("price", {}).get("amount"),
-                "Negotiable": ad_details.get("price", {}).get("negotiable"),
-                "Zip": ad_details.get("location", {}).get("zip"),
-                "City": ad_details.get("location", {}).get("city"),
-                "Seller Type": ad_details.get("seller", {}).get("type"),
-                "URL": ad_details.get("url_redirected"),
-                # Extracts specific fields from the properties dictionary dynamically
-                "Zimmer": ad_details.get("details", {}).get("Zimmer", "N/A"),
-                "Wohnfläche": ad_details.get("details", {}).get("Wohnfläche", "N/A"),
-                "Description": ad_details.get("description", "")[:200] + "..." 
-            }
-            detailed_apartments.append(flat_entry)
-            
-    return detailed_apartments
+
 
 def main() -> None:
 
@@ -85,10 +57,10 @@ def main() -> None:
     raw_detailed_data: list[dict[str, Any]] = fetch_all_listings_detailed(results, BASE_URL, "inserat", 2)
     save_to_file(output_dir, f"Detailed_Kleinanzeigen_{search}_{location}.json", raw_detailed_data)
     
-    # Extract and clean the apartment specs
-    clean_apartments = get_apartments(raw_detailed_data)
-    print(clean_apartments)
-    
+    # Extract and clean the listings data
+    flat_data = flatten_listings_data(raw_detailed_data)
+    print(flat_data)
+
     # Convert to Pandas DataFrame which can be passed and converted to different file types.
     #df: DataFrame = pd.DataFrame(response.json())
 
