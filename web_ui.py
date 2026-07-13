@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 import requests
 import pandas as pd
-from nicegui import ui, run
+from nicegui import app, ui, run
 
 # ---------------------------------------------------------------------------
 # Paths — resolved from the script location
@@ -195,6 +195,7 @@ def convert_to_excel(df: pd.DataFrame, excel_output_file: Path) -> None:
 def main_page() -> None:
     # Safely configure dark mode, headers, and styles inside the page context
     ui.dark_mode(True)
+    app.storage.user
 
     ui.add_head_html('''
         <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -553,4 +554,4 @@ def main_page() -> None:
             ui.tooltip('Scroll to Top')
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="Kleinanzeigen Scraper Platform", reload=True)
+    ui.run(title="Kleinanzeigen Scraper Platform", viewport='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no', reload=True)
