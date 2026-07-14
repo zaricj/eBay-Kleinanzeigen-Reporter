@@ -2,6 +2,18 @@ import json
 from pathlib import Path
 from typing import Any
 
+DEFAULT_CONFIG_DATA = {
+    "Default": {
+        "searchQuerry": "",
+        "searchLocation": "",
+        "searchRadius": 5,
+        "seachMinPrice": 0,
+        "searchMaxPrice": 0,
+        "searchPages": 1,
+        "searchMaxItems": 0,
+        }
+    }
+
 class ConfigHandler:
     def __init__(self, config_file : str | Path):
         self.config_file = config_file
@@ -25,7 +37,7 @@ class ConfigHandler:
         return self.get_default_config()
 
     def get_default_config(self) -> dict[str, dict]:
-        return {"Default": {"searchQuerry": "", "searchLocation": ""}}
+        return DEFAULT_CONFIG_DATA
 
     def save_config(self) -> None:
         with open(self.config_file, "w") as f:
