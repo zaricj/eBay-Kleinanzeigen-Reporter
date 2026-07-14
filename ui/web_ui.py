@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import io
+import os
 from typing import Any, Callable
 import json
 from pathlib import Path
@@ -8,6 +9,8 @@ from datetime import datetime
 import requests
 import pandas as pd
 from nicegui import app, ui, run
+from core.config import ConfigHandler
+from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------
 # Paths — resolved from the script location
@@ -16,6 +19,11 @@ BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
 JSON_OUTPUT_DIR = OUTPUT_DIR / "JSON"
 EXCEL_OUTPUT_DIR = OUTPUT_DIR / "Excel"
+PRESETS_DIR = BASE_DIR / "presets"
+PRESET_FILE = PRESETS_DIR / "data.json"
+ENV_FILE = BASE_DIR / "env" / ".env"
+
+load_dotenv(dotenv_path=ENV_FILE)
 
 
 @dataclass
@@ -60,7 +68,6 @@ def fetch_all_listings_detailed(
         log_callback(f"Fetching detailed information for {max_listings} listings...")
     else:
         log_callback(f"Fetching detailed information for {total} listings...")
-        
 
     with requests.Session() as session:
         for index, item in enumerate(results, 1):
@@ -195,7 +202,11 @@ def convert_to_excel(df: pd.DataFrame, excel_output_file: Path) -> None:
 def main_page() -> None:
     # Safely configure dark mode, headers, and styles inside the page context
     ui.dark_mode(True)
-    app.storage.user
+    config_handler = ConfigHandler(PRESET_FILE)
+    
+    # Ensure there is a default active selection saved in app.storage.user
+    if 'custom_presets' not in app.storage.user:
+        app.storage.user['custom_presets'] = 'Default'
 
     ui.add_head_html('''
         <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -229,7 +240,7 @@ def main_page() -> None:
             transition: border-color 0.25s ease;
         }
 
-        .{
+        .btn-gradient {
             background: linear-gradient(135deg, #6366f1 0%, #3b82f6 100%) !important;
             box-shadow: 0 8px 24px -8px rgba(99, 102, 241, 0.55);
             transition: transform 0.15s ease, box-shadow 0.15s ease;
@@ -299,6 +310,10 @@ def main_page() -> None:
 
     state = ScraperState()
 
+    # ---------------------------------------------------------------------------
+    # Action Hooks & Helper Methods
+    # ---------------------------------------------------------------------------
+
     def log_to_ui(message: str) -> None:
         current_time = time.strftime("%H:%M:%S")
         formatted_msg = f"[{current_time}] {message}"
@@ -319,6 +334,78 @@ def main_page() -> None:
         log_to_ui("[USER ACTION] Abort requested. Gracefully wrapping up current items...")
         ui.notify("Aborting scraper pipeline...", type='warning')
 
+    def bundle_input_values() -> dict[str, Any]:
+        return {
+            "searchQuerry": query_input.value,
+            "searchLocation": location_input.value,
+            "searchRadius": radius_input.value,
+            "seachMinPrice": min_price_input.value,
+            "searchMaxPrice": max_price_input.value,
+            "searchPages": page_count_input.value,
+            "searchMaxItems": max_listings_input.value,
+            "searchMinDate": publish_date_input.value
+        }
+
+    def update_presets_combobox_options() -> None:
+        """Syncs the select dropdown parameters with the config data schema on-disk."""
+        config_combobox.options = list(config_handler.data.keys())
+        config_combobox.update()
+
+    def load_selected_preset() -> None:
+        """Applies configuration state parameters mapped out inside selected JSON index."""
+        selected_name = config_combobox.value
+        if not selected_name:
+            ui.notify("Please select a preset to load first.", type='warning')
+            return
+
+        preset_data = config_handler.get_custom_preset(selected_name)
+        if not preset_data:
+            ui.notify(f"Preset '{selected_name}' could not be parsed.", type='warning')
+            return
+
+        query_input.value = preset_data.get("searchQuerry", "")
+        location_input.value = preset_data.get("searchLocation", "")
+        radius_input.value = preset_data.get("searchRadius", 5)
+        min_price_input.value = preset_data.get("seachMinPrice", None)
+        max_price_input.value = preset_data.get("searchMaxPrice", None)
+        page_count_input.value = preset_data.get("searchPages", 1)
+        max_listings_input.value = preset_data.get("searchMaxItems", 0)
+        publish_date_input.value = preset_data.get("searchMinDate", "")
+
+        ui.notify(f"Preset '{selected_name}' loaded successfully!", type='positive')
+
+    def delete_selected_preset() -> None:
+        """Removes custom preset key safely and switches bound selection fallback back to default."""
+        selected_name = config_combobox.value
+        if not selected_name or selected_name == "Default":
+            ui.notify("Cannot delete default or empty preset selection.", type='warning')
+            return
+
+        config_handler.remove_custom_preset(selected_name)
+        update_presets_combobox_options()
+
+        # Update both local variable tracking and element values
+        app.storage.user['custom_presets'] = 'Default'
+        config_combobox.value = 'Default'
+        ui.notify(f"Preset '{selected_name}' deleted.", type='info')
+
+    async def handle_save_preset() -> None:
+        """Asynchronously formats and writes input values directly into presets."""
+        preset_name = config_name_input.value.strip()
+        if not preset_name:
+            ui.notify("No preset name defined, please set a preset name.", type='warning')
+            return
+
+        data_to_save = bundle_input_values()
+        config_handler.add_custom_preset(preset_name, data_to_save)
+
+        update_presets_combobox_options()
+        app.storage.user['custom_presets'] = preset_name
+        config_combobox.value = preset_name
+        config_name_input.value = ""  # Clean field entry
+
+        ui.notify(f"Preset '{preset_name}' saved successfully!", type='positive')
+
     async def run_scraper() -> None:
         if state.is_running:
             ui.notify("A scrape is already running.", type='warning')
@@ -330,7 +417,7 @@ def main_page() -> None:
         if not location_input.value:
             ui.notify("Missing location input for searching.", type='warning')
             return
-        
+
         state.abort_requested = False
         state.is_running = True
         set_running_ui(True)
@@ -340,8 +427,7 @@ def main_page() -> None:
 
         base_url = base_url_input.value
         endpoint = endpoint_input.value
-        
-        
+
         params: dict[str, Any] = {}
         if query_input.value:
             params["query"] = query_input.value
@@ -456,14 +542,11 @@ def main_page() -> None:
         try:
             log_to_ui("Compiling and processing visible dataset records into spreadsheet sheets...")
             df = pd.DataFrame(table_view.rows)
-            # ensure_dir(EXCEL_OUTPUT_DIR)
             output = io.BytesIO()
             await run.io_bound(convert_to_excel, df, output)
             output.seek(0)
             default_filename = f"Export_{query_input.value}_{int(time.time())}.xlsx"
-            # full_path = EXCEL_OUTPUT_DIR / filename
             ui.download(output.getvalue(), filename=default_filename)
-            # await run.io_bound(convert_to_excel, df, full_path)
             log_to_ui(f"Excel dataset compiled successfully! Saved as: {default_filename}")
             ui.notify("Excel file exported successfully!", type='positive')
         except Exception as ex:
@@ -495,12 +578,54 @@ def main_page() -> None:
                             base_url_input = ui.input(label='Base URL', value='http://127.0.0.1:8000').classes('w-full')
                             endpoint_input = ui.input(label='Endpoint', value='inserate').classes('w-full')
 
+                    # --- Card: Custom Presets (Now holds Save, Load, and Delete) ---
+                    with ui.card().classes('w-full glass-card shadow-2xl p-5 rounded-2xl gap-4'):
+                        ui.label('Custom Presets & Management').classes('text-xs font-bold text-indigo-400 uppercase tracking-wider')
+                        
+                        # Row 1: Select, Load, and Delete
+                        with ui.grid(columns='2fr 1fr 1fr').classes('w-full gap-3 items-end'):
+                            # Added .props('dense') to make the dropdown match the compact theme
+                            config_combobox = ui.select(
+                                options=list(config_handler.data.keys()),
+                                label='Select Preset'
+                            ).bind_value(
+                                target_object=app.storage.user,
+                                target_name='custom_presets'
+                            ).classes('w-full').props('dense out-lined')
+
+                            # Reduced vertical padding (py-2 instead of py-4) and text size (text-xs)
+                            load_config_button = ui.button(
+                                text='Load', icon='reply', color='indigo',
+                                on_click=load_selected_preset
+                            ).classes('w-full py-2 text-xs font-bold rounded-xl text-white tracking-wider uppercase h-10')
+
+                            delete_config_button = ui.button(
+                                text='Delete', icon='delete', color='red',
+                                on_click=delete_selected_preset
+                            ).classes('w-full py-2 text-xs font-bold rounded-xl text-white tracking-wider uppercase h-10')
+
+                        # Visual separator inside the card
+                        ui.element('div').classes('w-full border-t border-white/5 my-1')
+
+                        # Row 2: Preset Input Name and Save Button (Sized down!)
+                        with ui.grid(columns='2fr 1fr').classes('w-full gap-3 items-end'):
+                            config_name_input = ui.input(
+                                label='New Preset Name', 
+                                placeholder='Enter a name for the preset...'
+                            ).classes('w-full').props('dense')
+
+                            save_config_button = ui.button(
+                                text='Save New', icon='save', color='green',
+                                on_click=handle_save_preset
+                            ).classes('w-full py-2 text-xs font-bold rounded-xl text-white tracking-wider uppercase h-10')
+
+                    # --- Card: Query Parameters targeting matrix ---
                     with ui.card().classes('w-full glass-card shadow-2xl p-5 rounded-2xl gap-4'):
                         ui.label('Query parameters targeting matrix').classes('text-xs font-bold text-indigo-400 uppercase tracking-wider')
 
                         with ui.grid(columns=2).classes('w-full gap-4'):
-                            query_input = ui.input(label='Query Keyword', value='').classes('w-full')
-                            location_input = ui.input(label='Target Location / Zip', value='Bad Neustadt a.d. Saale - Bayern').classes('w-full')
+                            query_input = ui.input(label='Query Keyword', value='', placeholder='Mietwohnung').classes('w-full')
+                            location_input = ui.input(label='Target Location / Zip', value='', placeholder='Bad Neustadt a.d. Saale - Bayern').classes('w-full')
 
                         with ui.grid(columns=3).classes('w-full gap-4 mt-1'):
                             radius_input = ui.number(label='Radius (km)', value=5, min=5, format='%d').classes('w-full')
@@ -547,11 +672,11 @@ def main_page() -> None:
                         </a>
                     </q-td>
                 ''')
-                
+
         with ui.button(icon='arrow_upward', on_click=lambda: ui.run_javascript('window.scrollTo({top: 0, behavior: "smooth"})')) \
         .classes('fixed bottom-6 right-6 z-50 btn-gradient rounded-full shadow-2xl') \
         .props('fab'):
             ui.tooltip('Scroll to Top')
 
 if __name__ in {"__main__", "__mp_main__"}:
-    ui.run(title="Kleinanzeigen Scraper Platform", viewport='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no', reload=True)
+    ui.run(title="Kleinanzeigen Scraper Platform", viewport='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no', storage_secret=os.getenv("secret"), reload=True)
