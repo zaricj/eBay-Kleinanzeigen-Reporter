@@ -1,0 +1,12 @@
+{
+    "Default": {
+        "searchQuerry": "",
+        "searchLocation": "",
+        "searchRadius": 5,
+        "seachMinPrice": 0,
+        "searchMaxPrice": 0,
+        "searchPages": 1,
+        "searchMaxItems": 0,
+        "searchMinDate": ""
+    }
+}
